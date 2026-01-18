@@ -1,0 +1,80 @@
+---
+name: "Charts: Test deployment"
+
+on:
+  pull_request:
+    paths:
+      - 'argocd/**'
+      - 'helm/**'
+
+jobs:
+  get-modified-charts:
+    runs-on: ubuntu-latest
+    outputs:
+      modified_charts: ${{ steps.get_modified_charts.outputs.modified_charts }}
+    steps:
+    - name: Check out code
+      uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+
+    - name: Get list of modified Helm charts
+      id: get_modified_charts
+      run: |
+        git fetch origin ${{ github.base_ref }}
+        charts=$(git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }} | egrep '^(argocd|helm)' | xargs -r -L1 dirname | uniq)
+        filtered_paths=$(echo "$charts" | while read -r p; do echo "$p" | sed -E 's#/(templates|files)##'; done | uniq)
+        echo "$filtered_paths"
+        echo "modified_charts=$(echo "$filtered_paths" | jq -R -s -c 'split("\n")[:-1]')" >> $GITHUB_OUTPUT
+
+    - run: echo ${{ steps.get_modified_charts.outputs.modified_charts }}
+
+  dry-run-deployment:
+    needs: get-modified-charts
+    if: needs.get-modified-charts.outputs.modified_charts != '[""]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false 
+      matrix:
+        k8s:
+          - 1.32.6
+        charts: ${{ fromJSON(needs.get-modified-charts.outputs.modified_charts) }}
+    steps:
+    - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+    - name: Set up Helm
+      uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4
+
+    - name: Install homebrew and kubeconform
+      run: |
+        sudo apt-get update && sudo apt-get -y install curl
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> /home/runner/.bashrc
+        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+        brew install kubeconform
+
+    - name: Login to registry 
+      env: 
+        registry_username: dedsxc
+        registry_password: ${{ secrets.CI_BOT_TOKEN }}
+        registry: ghcr.io
+        repository: dedsxc
+      run: |
+        echo ${registry_password} | helm registry login ${registry} -u ${registry_username} --password-stdin
+
+    - name: Dry-run modified Helm Charts
+      run: |
+        # Export brew binary folder
+        (echo; echo 'eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"') >> /home/runner/.bashrc
+        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          
+        # Fail on error
+        set -o pipefail
+
+        # Dry-run tests
+        echo -e "\033[0;32mProcessing chart $(basename ${{ matrix.charts }}) for kubernetes v${{ matrix.k8s }}\033[0m"
+        helm dependency build ${{ matrix.charts }}
+        helm template --dry-run $(basename ${{ matrix.charts }}) ${{ matrix.charts }} | kubeconform \
+          -kubernetes-version ${{ matrix.k8s }} \
+          -exit-on-error \
+          -verbose \
+          -output json \
+          -schema-location default \
+          -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'

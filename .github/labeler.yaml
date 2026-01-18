@@ -1,0 +1,21 @@
+---
+# .github/labeler.yml
+
+# Environment
+staging:
+  - changed-files:
+      - any-glob-to-any-file: "argocd/stg/**"
+production:
+  - changed-files:
+      - any-glob-to-any-file: "argocd/prd/**"
+
+# Other
+github-actions:
+  - changed-files:
+      - any-glob-to-any-file: ".github/**"
+docker:
+  - changed-files:
+      - any-glob-to-any-file: "containers/**"
+helm-charts:
+  - changed-files:
+      - any-glob-to-any-file: "helm/**"

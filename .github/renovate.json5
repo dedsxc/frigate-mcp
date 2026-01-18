@@ -1,0 +1,57 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  "extends": [
+    'config:recommended',
+    'docker:pinDigests',
+    'helpers:pinGitHubActionDigests',
+    ':pinDevDependencies'
+  ],
+  "automergeType": "branch",
+  "packageRules": [
+    {
+      "description": "Auto merge GitHub Actions",
+      "groupName": "github-actions",
+      "matchDepTypes": ["action"],
+      "matchUpdateTypes": ["major", "minor", "patch", "digest"],
+      "automerge": true
+    },
+    // Containers
+    {
+      "matchFileNames": ["containers/**"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "patch containers",
+      "commitMessagePrefix": "fix:"
+    },
+    {
+      "matchFileNames": ["containers/**"],
+      "matchUpdateTypes": ["minor"],
+      "groupName": "minor containers",
+      "commitMessagePrefix": "feat:"
+    },
+    {
+      "matchFileNames": ["containers/**"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "major containers",
+      "commitMessagePrefix": "BREAKING CHANGE:"
+    },
+    // ArgoCD
+    {
+      "matchFileNames": ["argocd/**"],
+      "matchUpdateTypes": ["patch"],
+      "groupName": "patch applications",
+      "commitMessagePrefix": "fix:"
+    },
+    {
+      "matchFileNames": ["argocd/**"],
+      "matchUpdateTypes": ["minor"],
+      "groupName": "minor applications",
+      "commitMessagePrefix": "feat:"
+    },
+    {
+      "matchFileNames": ["argocd/**"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "major applications",
+      "commitMessagePrefix": "BREAKING CHANGE:"
+    },
+  ]
+}

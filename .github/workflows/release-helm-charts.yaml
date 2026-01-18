@@ -1,0 +1,76 @@
+name: "Release helm chart"
+
+on:
+  push:
+    branches:
+      - "main"
+    paths:
+      - "helm/**"
+
+# need for release-please action
+permissions:
+  contents: write
+  id-token: write  
+  attestations: write
+  packages: write
+  actions: write
+  pull-requests: read
+
+env:
+  GHCR_REGISTRY: ghcr.io
+  GHCR_REGISTRY_REPO: dedsxc
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest 
+    outputs:
+      paths_released: ${{ steps.release-please.outputs.paths_released }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Generate Token
+        uses: actions/create-github-app-token@29824e69f54612133e76f7eaac726eef6c875baf # v2
+        id: app-token
+        with:
+          app-id: "${{ secrets.BOT_APP_ID }}"
+          private-key: "${{ secrets.BOT_APP_PRIV_KEY }}"
+
+      - uses: googleapis/release-please-action@16a9c90856f42705d54a6fda1823352bdc62cf38 # v4
+        id: release-please
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          # Advanced configuration: https://github.com/googleapis/release-please/blob/main/docs/manifest-releaser.md
+          config-file: .github/release-please-config.json
+          manifest-file: .github/.release-please-manifest.json
+      
+
+  # Run the following section to push Chart if a release is created
+  release-charts:
+    name: Release charts
+    runs-on: ubuntu-latest
+    needs: release-please
+    if: ${{ needs.release-please.outputs.paths_released != '[]' }}
+    strategy:
+      fail-fast: false 
+      matrix:
+        charts: ${{ fromJson(needs.release-please.outputs.paths_released) }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: dedsxc
+          password: ${{ secrets.CI_BOT_TOKEN }}
+
+      - name: Push Chart
+        run: |
+          chart_name=$(basename ${{ matrix.charts }})
+          chart_version=$(yq e '.version' ${{ matrix.charts }}/Chart.yaml)
+          helm package ${{ matrix.charts }} --dependency-update
+          helm push $chart_name-$chart_version.tgz oci://${{ env.GHCR_REGISTRY }}/${{ env.GHCR_REGISTRY_REPO }}
