@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest 
     outputs:
       paths_released: ${{ steps.release-please.outputs.paths_released }}
+      releases_created: ${{ steps.release-please.outputs.releases_created }}
     steps:
       - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6
         with:
@@ -51,7 +52,7 @@ jobs:
     name: Release docker image
     runs-on: ubuntu-latest
     needs: release-please
-    if: ${{ needs.release-please.outputs.paths_released != '[]' }}
+    if: ${{ needs.release-please.outputs.releases_created }}
     strategy:
       fail-fast: false 
       matrix:
